@@ -8,7 +8,7 @@ getPrincipalesVariables <- function() {
   require(httr2)
   require(tidyverse)
   require(jsonlite)
-  url = "https://api.bcra.gob.ar/estadisticas/v1/PrincipalesVariables"
+  url = "https://api.bcra.gob.ar/estadisticas/v2.0/PrincipalesVariables"
 
 
   response = request(url) %>%
@@ -32,7 +32,7 @@ getDatosVariable <- function(idVariable, desde, hasta) {
   require(httr2)
   require(tidyverse)
   require(jsonlite)
-  url <- paste0("https://api.bcra.gob.ar/estadisticas/v1/datosvariable/", idVariable, "/", desde, "/", hasta)
+  url <- paste0("https://api.bcra.gob.ar/estadisticas/v2.0/datosvariable/", idVariable, "/", desde, "/", hasta)
 
   response = request(url) %>%
     req_headers(`Accept_Language` = "en-US") %>%
@@ -40,10 +40,10 @@ getDatosVariable <- function(idVariable, desde, hasta) {
     req_perform()
 
 
-  body = fromJSON(rawToChar(response$body))$results
+  body = fromJSON(rawToChar(response$body))$results[2:3]
   body$valor = as.double(gsub(",", ".", body$valor))
-  body$date = as.Date(body$fecha, format = "%d/%m/%Y")
-  body = body %>% select(date, valor)
+  body$fecha = as.Date(body$fecha, format = "%Y-%m-%d")
+  body = body %>% select(date = fecha, valor)
   return(tibble(body))
 }
 
