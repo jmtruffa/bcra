@@ -86,7 +86,7 @@ getDatosVariable = function(idVariable, desde, hasta) {
   }
 
   # Combine all the results into a single data frame
-  combined_data = do.call(rbind, all_data)
+  combined_data = do.call(rbind, all_data) %>% arrange(date)
 
   return(combined_data)
 }
