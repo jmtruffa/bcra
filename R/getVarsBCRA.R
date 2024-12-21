@@ -8,7 +8,7 @@ getPrincipalesVariables <- function() {
   require(httr2)
   require(tidyverse)
   require(jsonlite)
-  url = "https://api.bcra.gob.ar/estadisticas/v2.0/PrincipalesVariables"
+  url = "https://api.bcra.gob.ar/estadisticas/v3.0/Monetarias"
 
 
   response = request(url) %>%
@@ -32,11 +32,12 @@ int_getDatosVariable = function(idVariable, desde, hasta) {
   require(httr2)
   require(tidyverse)
   require(jsonlite)
-  url = paste0("https://api.bcra.gob.ar/estadisticas/v2.0/datosvariable/", idVariable, "/", desde, "/", hasta)
+  url = paste0("https://api.bcra.gob.ar/estadisticas/v3.0/Monetarias/", idVariable, "?desde=", desde, "&hasta=", hasta)
 
   response = request(url) %>%
     req_headers(`Accept_Language` = "en-US") %>%
     req_method("GET") %>%
+    #req_dry_run()
     req_perform()
 
 
