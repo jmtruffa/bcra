@@ -71,7 +71,9 @@ getDatosVariable = function(idVariable, desde, hasta) {
   current_start <- desde
   while (current_start <= hasta) {
     # Define the end date for the current interval
-    current_end = min(current_start + 364, hasta)  # 364 to ensure it doesn't exceed 1 year
+    #current_end = min(current_start + 364, hasta)  # 364 to ensure it doesn't exceed 1 year
+    next_year_end <- as.Date(paste0(as.numeric(format(current_start,"%Y")) + 1, "-12-31"))
+    current_end <- min(next_year_end, hasta)
 
     # Make the API call
     data <- bcra::int_getDatosVariable(idVariable = idVariable,
