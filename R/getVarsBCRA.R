@@ -4,43 +4,17 @@
 #' @return un tibble con el catlogo de variables
 getPrincipalesVariables <- function() {
   require(httr2)
+  require(tidyverse)
   require(jsonlite)
-  require(dplyr)
-  require(tibble)
+  url = "https://api.bcra.gob.ar/estadisticas/v4.0/Monetarias"
 
-  base_url <- "https://api.bcra.gob.ar/estadisticas/v4.0/Monetarias"
 
-  fetch_page <- function(offset = 0, limit = 1000) {
-    req <- request(base_url) |>
-      req_url_query(offset = offset, limit = limit) |>
-      req_headers(`Accept-Language` = "en-US") |>
-      req_method("GET")
-
-    resp <- req_perform(req)
-    out  <- jsonlite::fromJSON(rawToChar(resp$body), simplifyVector = TRUE)
-    out
-  }
-
-  pg1 <- fetch_page(0, 1000)
-  res <- as_tibble(pg1$results)
-
-  total <- tryCatch(pg1$metadata$resultset$count, error = function(e) nrow(res))
-  limit <- tryCatch(pg1$metadata$resultset$limit, error = function(e) 1000L)
-
-  offset <- limit
-  while (!is.na(total) && offset < total) {
-    pg <- fetch_page(offset, limit)
-    res <- bind_rows(res, as_tibble(pg$results))
-    offset <- offset + limit
-  }
-
-  res |>
-    select(
-      idVariable, descripcion, categoria, tipoSerie, periodicidad,
-      unidadExpresion, moneda,
-      primerFechaInformada, ultFechaInformada, ultValorInformado
-    ) |>
-    arrange(idVariable)
+  response = request(url) %>%
+    req_method("GET") %>%
+    req_perform()
+  data = fromJSON(rawToChar(response$body))
+  result = as_tibble(data$results)
+  return(result)
 }
 
 #' int_getDatosVariable
@@ -52,49 +26,22 @@ getPrincipalesVariables <- function() {
 #' @return un tibble con columnas date y valor
 int_getDatosVariable <- function(idVariable, desde, hasta) {
   require(httr2)
+  require(tidyverse)
   require(jsonlite)
-  require(dplyr)
-  require(tibble)
+  url = paste0("https://api.bcra.gob.ar/estadisticas/v4.0/Monetarias/", idVariable, "?desde=", desde, "&hasta=", hasta)
 
-  stopifnot(!missing(idVariable), !missing(desde), !missing(hasta))
+  response = request(url) %>%
+    req_headers(`Accept_Language` = "en-US") %>%
+    req_method("GET") %>%
+    #req_dry_run()
+    req_perform()
 
-  base_url <- paste0("https://api.bcra.gob.ar/estadisticas/v4.0/Monetarias/", idVariable)
 
-  req <- request(base_url) |>
-    req_url_query(desde = desde, hasta = hasta) |>
-    req_headers(`Accept-Language` = "en-US") |>
-    req_method("GET")
-
-  resp <- req_perform(req)
-  body <- jsonlite::fromJSON(rawToChar(resp$body), simplifyVector = TRUE)
-
-  # Estructura v4 esperada: results$detalle = lista/df con campos fecha, valor
-  det <- NULL
-  if (!is.null(body$results$detalle)) {
-    det <- body$results$detalle
-    # si viene anidado como lista de una sola entrada
-    if (is.list(det) && length(det) == 1 && is.data.frame(det[[1]])) det <- det[[1]]
-  } else if (!is.null(body$results)) {
-    # fallback: algunas respuestas viejas devolvan results$fecha/valor directo
-    det <- body$results
-  } else {
-    stop("Respuesta de API sin campo 'results'.")
-  }
-
-  det <- as_tibble(det) |>
-    rename(date = any_of(c("fecha", "Date", "date")),
-           valor = any_of(c("valor", "Value", "value"))) |>
-    select(date, valor)
-
-  # Normalizacin robusta de tipos
-  det <- det |>
-    mutate(
-      date  = as.Date(as.character(date)),
-      valor = suppressWarnings(as.numeric(gsub(",", ".", as.character(valor))))
-    ) |>
-    arrange(date)
-
-  det
+  body = fromJSON(rawToChar(response$body))$results$detalle[1:2][[1]]
+  body$valor = as.double(gsub(",", ".", body$valor))
+  body$fecha = as.Date(body$fecha, format = "%Y-%m-%d")
+  body = body %>% select(date = fecha, valor)
+  return(tibble(body))
 }
 
 #' getDatosVariable
@@ -106,33 +53,36 @@ int_getDatosVariable <- function(idVariable, desde, hasta) {
 #' @param hasta fecha (YYYY-MM-DD)
 #' @return tibble con (date, valor)
 getDatosVariable <- function(idVariable, desde, hasta) {
-  require(dplyr)
-  require(tibble)
-
+  # Convert the dates to Date class
   desde <- as.Date(desde)
   hasta <- as.Date(hasta)
-  stopifnot(!is.na(desde), !is.na(hasta), desde <= hasta)
 
-  out <- list()
+  # Initialize an empty list to store the results
+  all_data <- list()
+
+  # Loop through the date range and make API calls in 1-year intervals
   current_start <- desde
-
   while (current_start <= hasta) {
-    # fin del tramo: ltimo da del ao de current_start o 'hasta', lo que ocurra primero
-    tramo_end <- as.Date(paste0(format(current_start, "%Y"), "-12-31"))
-    current_end <- min(tramo_end, hasta)
+    # Define the end date for the current interval
+    #current_end = min(current_start + 364, hasta)  # 364 to ensure it doesn't exceed 1 year
+    next_year_end <- as.Date(paste0(as.numeric(format(current_start,"%Y")) + 1, "-12-31"))
+    current_end <- min(next_year_end, hasta)
 
-    chunk <- int_getDatosVariable(
-      idVariable = idVariable,
-      desde = format(current_start, "%Y-%m-%d"),
-      hasta = format(current_end, "%Y-%m-%d")
-    )
+    # Make the API call
+    data <- bcra::int_getDatosVariable(idVariable = idVariable,
+                                       desde = as.character(current_start),
+                                       hasta = as.character(current_end))
 
-    out <- append(out, list(chunk))
-    current_start <- current_end + 1
+    # Store the result
+    all_data = append(all_data, list(data))
+
+    # Update the start date for the next interval
+    current_start = current_end + 1
   }
 
-  bind_rows(out) |>
-    distinct(date, .keep_all = TRUE) |>
-    arrange(date)
+  # Combine all the results into a single data frame
+  combined_data = do.call(rbind, all_data) %>% arrange(date)
+
+  return(combined_data)
 }
 
