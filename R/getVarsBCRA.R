@@ -28,20 +28,49 @@ int_getDatosVariable <- function(idVariable, desde, hasta) {
   require(httr2)
   require(tidyverse)
   require(jsonlite)
-  url = paste0("https://api.bcra.gob.ar/estadisticas/v4.0/Monetarias/", idVariable, "?desde=", desde, "&hasta=", hasta)
+
+  url = paste0("https://api.bcra.gob.ar/estadisticas/v4.0/Monetarias/",
+               idVariable, "?desde=", desde, "&hasta=", hasta)
 
   response = request(url) %>%
-    req_headers(`Accept_Language` = "en-US") %>%
+    req_headers(Accept_Language = "en-US") %>%
     req_method("GET") %>%
-    #req_dry_run()
     req_perform()
 
+  parsed = fromJSON(rawToChar(response$body))
 
-  body = fromJSON(rawToChar(response$body))$results$detalle[1:2][[1]]
-  body$valor = as.double(gsub(",", ".", body$valor))
-  body$fecha = as.Date(body$fecha, format = "%Y-%m-%d")
-  body = body %>% select(date = fecha, valor)
-  return(tibble(body))
+  # Verificar si hay resultados
+  if (is.null(parsed$results) ||
+      is.null(parsed$results$detalle) ||
+      length(parsed$results$detalle) == 0) {
+    # Devolver tibble vacío con la estructura esperada
+    return(tibble(date = as.Date(character()), valor = numeric()))
+  }
+
+  detalle = parsed$results$detalle
+
+  # Si detalle es una lista (1 observación), convertir a data.frame
+  if (is.list(detalle) && !is.data.frame(detalle)) {
+    detalle = as.data.frame(detalle)
+  }
+
+  # Convertir a tibble y verificar columnas
+  body = as_tibble(detalle)
+
+  # Verificar que existan las columnas necesarias
+  if (!"valor" %in% names(body) || !"fecha" %in% names(body)) {
+    return(tibble(date = as.Date(character()), valor = numeric()))
+  }
+
+  # Procesar y seleccionar solo fecha y valor
+  body = body %>%
+    mutate(
+      valor = as.double(gsub(",", ".", valor)),
+      fecha = as.Date(fecha, format = "%Y-%m-%d")
+    ) %>%
+    select(date = fecha, valor)
+
+  return(body)
 }
 
 #' getDatosVariable
